@@ -13,6 +13,7 @@ data Options = Options
   , genExec     :: Bool
   , genRefined  :: Bool
   , refinedDir  :: String
+  , refinedMods :: [String]
   , topFile     :: String
   , topModule   :: String
   , force       :: Bool
@@ -25,6 +26,7 @@ defaultOptions = Options
   , genExec     = False
   , genRefined  = False
   , refinedDir  = ""
+  , refinedMods = []
   , topFile     = ""
   , topModule   = ""
   , force       = False
@@ -49,6 +51,9 @@ options =
   , Option ['r'] ["refined"]
       (ReqArg (\refDir opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, genRefined = True, refinedDir = refDir}) "")
       "Refined Files Directory"
+  , Option ['g'] ["refinedParts"]
+      (ReqArg (\refMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, genRefined = True, refinedMods = splitColon refMods}) "")
+      "Refined Partitions"
   , Option ['t'] ["topmodule"]
       (ReqArg (\topmod opts -> return opts{topModule = topmod}) "")
       "Top-level Module"
@@ -70,8 +75,10 @@ main = do
   opts <- parserOpts args
   let removeSlash = subRegex (mkRegex "^.*\\/") (topFile opts) ""
   let name = subRegex (mkRegex ".spec$") removeSlash ""
-  let runSpec inDir = system $ "cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts
-  let runBsv inDir outDir = system $ "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/single:${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name ++ ".bsv"
+  let specCmd inDir = "cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts
+  let bsvCmd inDir outDir = "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 " ++ (if topModule opts /= "" then "-g " else "") ++ topModule opts ++ " " ++ name ++ ".bsv 2>&1 | ignoreBsc.pl"
+  let runSpec inDir = do{putStrLn $ specCmd inDir; system $ specCmd inDir}
+  let runBsv inDir outDir = do{putStrLn $ bsvCmd inDir outDir; system $ bsvCmd inDir outDir}
   let whenRet cond x = when cond (x >> return ())
   whenRet (genBsv opts) $ do
     system "mkdir -p bsv"
@@ -79,17 +86,22 @@ main = do
   whenRet (genVerilog opts) $ do
     system "mkdir -p bsv/bdir bsv/single"
     runBsv "." "single"
+    system "ln -sf -t bsv/single ${STRUCTURALSPEC_HOME}/lib/single/*.v"
   whenRet (genMulti opts) $ do
     system "mkdir -p bsv/multi"
     system "cd bsv/single; Convert.sh"
     system "ln -sf -t bsv/multi ${STRUCTURALSPEC_HOME}/lib/multi/*.v"
   whenRet (genRefined opts) $ do
-    system "mkdir -p buildRefined"
-    system "ln -sf -t buildRefined *.spec"
-    system $ "ln -sf -t buildRefined " ++ refinedDir opts ++ " *.spec"
+    system "mkdir -p buildRefined buildRefined/bsv/bdir buildRefined/bsv/multi"
+    system $ "ln -sf -t buildRefined `pwd`/*.spec"
+    system $ "ln -sf -t buildRefined `pwd`/" ++ refinedDir opts ++ "/*.spec"
     runSpec "buildRefined"
     runBsv "buildRefined" "multi"
-    system "cp buildRefined/bsv/multi/*.v bsv/multi/"
+    foldl (\x file -> x >> (system $ "cp buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ "_multi.v")) (return ExitSuccess) (refinedMods opts)
   whenRet (genExec opts) $ do
-    system $ "cd bsv/single; bsc -e " ++ topModule opts ++ " *.v"
-    whenRet (genMulti opts) (system $ "cd bsv/multi; bsc -e " ++ topModule opts ++ " *.v")
+    let cmd inDir = "cd bsv/" ++ inDir ++ "; bsc -e " ++ (if topModule opts == "" then "mk" ++ name else topModule opts) ++ " *.v"
+    putStrLn $ cmd "single"
+    system $ cmd "single"
+    whenRet (genMulti opts) $ do
+      putStrLn $ cmd "multi"
+      system $ cmd "multi"
