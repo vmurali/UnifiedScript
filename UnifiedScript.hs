@@ -47,7 +47,7 @@ options =
       (NoArg (\opts -> return opts {genBsv = True, genVerilog = True}))
       "Generate Verilog"
   , Option ['m'] ["multi"]
-      (ReqArg (\mulMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = (multiMods opts) ++ splitColon mulMods}) "")
+      (OptArg (\mulMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = (multiMods opts) ++ splitColon (fromMaybe [] mulMods)}) "")
       "Refined Partitions"
   , Option ['e'] ["exec"]
       (NoArg (\opts -> return opts {genBsv = True, genVerilog = True, genExec = True}))
@@ -112,9 +112,9 @@ main = do
     runBsv "buildRefined" "multi"
     foldl (\x file -> x >> (system $ "ChangeName -o bsv/multi buildRefined/bsv/multi/" ++ file ++ ".v")) (return ExitSuccess) (refinedMods opts)
   whenRet (genExec opts) $ do
-    let cmd inDir = "cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ " *.v"
-    putStrLn $ cmd "single"
-    system $ cmd "single"
+    let cmd inDir name = "cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v"
+    putStrLn $ cmd "single" ""
+    system $ cmd "single" ""
     whenRet (genMulti opts) $ do
-      putStrLn $ cmd "multi"
-      system $ cmd "multi"
+      putStrLn $ cmd "multi" "_FIFO_OUTER_NOT_EXPOSED"
+      system $ cmd "multi" "_FIFO_OUTER_NOT_EXPOSED"
