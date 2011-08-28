@@ -81,42 +81,39 @@ parserOpts args = do
   putStrLn $ show retOpts
   return retOpts
 
+runCmd cmd = do
+  putStrLn $ "\nEXECUTING: " ++ cmd ++ "\n"
+  exitCode <- system cmd
+  case exitCode of
+    ExitSuccess -> return ()
+    _           -> exitWith exitCode
+
 main = do
   args <- getArgs
   opts <- parserOpts args
-  let specCmd inDir = "cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts
-  let bsvCmd inDir outDir = "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl"
-  let runSpec inDir = do{putStrLn $ specCmd inDir; system $ specCmd inDir}
-  let runBsv inDir outDir = do{putStrLn $ bsvCmd inDir outDir; system $ bsvCmd inDir outDir}
-  let whenRet cond x = when cond $ x >> return ()
-  whenRet (genBsv opts) $ do
-    system "mkdir -p bsv"
-    runSpec "."
-  whenRet (genVerilog opts) $ do
-    system "mkdir -p bsv/bdir bsv/single"
-    runBsv "." "single"
-    system "ln -sf -t bsv/single ${STRUCTURALSPEC_HOME}/lib/single/*.v"
-  whenRet (genMulti opts) $ do
+  let getBsv inDir = "cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts
+  let getV inDir outDir = "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl"
+  let getExec inDir name = "cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v"
+  when (genBsv opts) $ do
+    runCmd "mkdir -p bsv"
+    runCmd $ getBsv "."
+  when (genVerilog opts) $ do
+    runCmd "mkdir -p bsv/bdir bsv/single"
+    runCmd $ getV "." "single"
+    runCmd "ln -sf -t bsv/single ${STRUCTURALSPEC_HOME}/lib/single/*.v"
+  when (genMulti opts) $ do
     allFiles <- getDirectoryContents "bsv/single"
     let files = [x|x <- allFiles, isJust $ matchRegex (mkRegex "^.*\\.v$") x, x /= "Base.v", x /= "Rand.v", x /= "RegFile.v"]
-    system "mkdir -p bsv/multi"
-    foldl (\x file -> do
-                        x
-                        putStrLn $ "Applying Multicycle on " ++ file
-                        system $ "Multicycle -o bsv/multi -m " ++ (intercalate ":" $ multiMods opts) ++ " bsv/single/" ++ file
-          ) (return ExitSuccess) files
-    system "ln -sf -t bsv/multi ${STRUCTURALSPEC_HOME}/lib/multi/*.v"
-  whenRet (genRefined opts) $ do
-    system "mkdir -p buildRefined buildRefined/bsv/bdir buildRefined/bsv/multi"
-    system $ "ln -sf -t buildRefined `pwd`/*.spec"
-    system $ "ln -sf -t buildRefined `pwd`/" ++ refinedDir opts ++ "/*.spec"
-    runSpec "buildRefined"
-    runBsv "buildRefined" "multi"
-    foldl (\x file -> x >> (system $ "cp -f buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ "_FIFO_ALL_EXPOSED.v")) (return ExitSuccess) (refinedMods opts)
-  whenRet (genExec opts) $ do
-    let cmd inDir name = "cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v"
-    putStrLn $ cmd "single" ""
-    system $ cmd "single" ""
-    whenRet (genMulti opts) $ do
-      putStrLn $ cmd "multi" "_FIFO_OUTER_NOT_EXPOSED"
-      system $ cmd "multi" "_FIFO_OUTER_NOT_EXPOSED"
+    runCmd "mkdir -p bsv/multi"
+    foldl (\x file -> x >> (runCmd $ "Multicycle -o bsv/multi -m " ++ (intercalate ":" $ multiMods opts) ++ " bsv/single/" ++ file)) (return ()) files
+    runCmd "ln -sf -t bsv/multi ${STRUCTURALSPEC_HOME}/lib/multi/*.v"
+  when (genRefined opts) $ do
+    runCmd "mkdir -p buildRefined buildRefined/bsv/bdir buildRefined/bsv/multi"
+    runCmd $ "ln -sf -t buildRefined `pwd`/*.spec"
+    runCmd $ "ln -sf -t buildRefined `pwd`/" ++ refinedDir opts ++ "/*.spec"
+    runCmd $ getBsv "buildRefined"
+    runCmd $ getV "buildRefined" "multi"
+    foldl (\x file -> x >> (runCmd $ "cp -f buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ "_FIFO_ALL_EXPOSED.v")) (return ()) (refinedMods opts)
+  when (genExec opts) $ do
+    runCmd $ getExec "single" ""
+    when (genMulti opts) (runCmd $ getExec "multi" "_FIFO_OUTER_NOT_EXPOSED")
