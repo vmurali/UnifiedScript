@@ -20,7 +20,7 @@ data Options = Options
   , topFile     :: String
   , topModule   :: String
   , force       :: Bool
-  }
+  } deriving Show
 
 defaultOptions = Options
   { genBsv      = False
@@ -73,17 +73,19 @@ removeSlash opts = subRegex (mkRegex "^.*\\/") (topFile opts) ""
 name opts = subRegex (mkRegex ".spec$") (removeSlash opts) ""
 
 parserOpts args = do
-  let (optionList, fileList, err) = getOpt RequireOrder options args
+  let (optionList, fileList, err) = getOpt Permute options args
   opts <- foldl (>>=) (return defaultOptions{topFile = head fileList}) optionList
-  if topModule opts == ""
-    then return opts{topModule = "mk" ++ name opts, multiMods = nub $ ("mk" ++ name opts):(multiMods opts)}
-    else return opts
+  let retOpts = if topModule opts == ""
+                  then opts{topModule = "mk" ++ name opts, multiMods = nub $ ("mk" ++ name opts):(multiMods opts)}
+                  else opts
+  putStrLn $ show retOpts
+  return retOpts
 
 main = do
   args <- getArgs
   opts <- parserOpts args
   let specCmd inDir = "cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts
-  let bsvCmd inDir outDir = "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name opts ++ ".bsv 2>&1 | ignoreBsc.pl"
+  let bsvCmd inDir outDir = "cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl"
   let runSpec inDir = do{putStrLn $ specCmd inDir; system $ specCmd inDir}
   let runBsv inDir outDir = do{putStrLn $ bsvCmd inDir outDir; system $ bsvCmd inDir outDir}
   let whenRet cond x = when cond $ x >> return ()
@@ -110,7 +112,7 @@ main = do
     system $ "ln -sf -t buildRefined `pwd`/" ++ refinedDir opts ++ "/*.spec"
     runSpec "buildRefined"
     runBsv "buildRefined" "multi"
-    foldl (\x file -> x >> (system $ "ChangeName -o bsv/multi buildRefined/bsv/multi/" ++ file ++ ".v")) (return ExitSuccess) (refinedMods opts)
+    foldl (\x file -> x >> (system $ "cp -f buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ "_FIFO_ALL_EXPOSED.v")) (return ExitSuccess) (refinedMods opts)
   whenRet (genExec opts) $ do
     let cmd inDir name = "cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v"
     putStrLn $ cmd "single" ""
