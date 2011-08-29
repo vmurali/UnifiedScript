@@ -69,14 +69,15 @@ options =
       "Show help"
   ]
 
-removeSlash opts = subRegex (mkRegex "^.*\\/") (topFile opts) ""
-name opts = subRegex (mkRegex ".spec$") (removeSlash opts) ""
+fileName opts = subRegex (mkRegex ".spec$") (removeSlash opts) ""
+ where
+  removeSlash opts = subRegex (mkRegex "^.*\\/") (topFile opts) ""
 
 parserOpts args = do
   let (optionList, fileList, err) = getOpt Permute options args
   opts <- foldl (>>=) (return defaultOptions{topFile = head fileList}) optionList
   let retOpts = if topModule opts == ""
-                  then opts{topModule = "mk" ++ name opts, multiMods = nub $ ("mk" ++ name opts):(multiMods opts)}
+                  then opts{topModule = "mk" ++ fileName opts, multiMods = nub $ ("mk" ++ fileName opts):(multiMods opts)}
                   else opts
   putStrLn $ show retOpts
   return retOpts
@@ -92,7 +93,7 @@ main = do
   args <- getArgs
   opts <- parserOpts args
   let getBsv inDir = "bash -c \"cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts ++ "\""
-  let getV inDir outDir = "bash -o pipefail -c \"cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ name opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl\""
+  let getV inDir outDir = "bash -o pipefail -c \"cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 -g " ++ topModule opts ++ " " ++ fileName opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl\""
   let getExec inDir name = "bash -c \"cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v\""
   when (genBsv opts) $ do
     runCmd "mkdir -p bsv"
