@@ -94,7 +94,7 @@ main = do
   opts <- parserOpts args
   let getBsv inDir = "bash -c \"cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts ++ "\""
   let getV inDir outDir = "bash -o pipefail -c \"cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 " ++ fileName opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl\""
-  let getExec inDir name = "bash -c \"cd bsv/" ++ inDir ++ "; bsc -e " ++ topModule opts ++ name ++ " *.v\""
+  let getExec inDir name = "bash -c \"cd bsv/" ++ inDir ++ "; bsc -verilog -e " ++ topModule opts ++ name ++ " *.v ../../*.c ../bdir/*.ba\""
   when (genBsv opts) $ do
     runCmd "mkdir -p bsv"
     runCmd $ getBsv "."
