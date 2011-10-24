@@ -19,6 +19,7 @@ data Options = Options
   , refinedMods :: [String]
   , topFile     :: String
   , topModule   :: String
+  , hasC        :: Bool
   , force       :: Bool
   } deriving Show
 
@@ -33,6 +34,7 @@ defaultOptions = Options
   , refinedMods = []
   , topFile     = ""
   , topModule   = ""
+  , hasC        = False
   , force       = False
   }
 
@@ -61,6 +63,9 @@ options =
   , Option ['t'] ["topmodule"]
       (ReqArg (\topmod opts -> return opts{topModule = topmod, multiMods = nub $ topmod:(multiMods opts)}) "")
       "Top-level Module"
+  , Option ['c'] ["c"]
+      (NoArg (\opts -> return opts {hasC = True}))
+      "Has C files"
   , Option ['f'] ["force"]
       (NoArg (\opts -> return opts {force = True}))
       "Has refined modules"
@@ -94,7 +99,8 @@ main = do
   opts <- parserOpts args
   let getBsv inDir = "bash -c \"cd " ++ inDir ++ ";StructuralSpec " ++ (if force opts then "-f " else "") ++ "-o bsv -i ${STRUCTURALSPEC_HOME}/lib:${STRUCTURALSPEC_HOME}/lib/multi " ++ topFile opts ++ "\""
   let getV inDir outDir = "bash -o pipefail -c \"cd " ++ inDir ++ "/bsv; bsc -u -unsafe-always-ready -verilog -vdir " ++ outDir ++ " -bdir bdir -p +:${STRUCTURALSPEC_HOME}/lib/" ++ outDir ++ ":${STRUCTURALSPEC_HOME}/lib -aggressive-conditions -v95 -steps-warn-interval 100000000 " ++ fileName opts ++ ".bsv +RTS -K4G -RTS 2>&1 | ignoreBsc.pl\""
-  let getExec inDir name = "bash -c \"cd bsv/" ++ inDir ++ "; bsc -verilog -e " ++ topModule opts ++ name ++ " *.v ../../*.c ../bdir/*.ba\""
+  let cFiles = if hasC opts then " ../../*.c ../bdir/*.ba" else ""
+  let getExec inDir name = "bash -c \"cd bsv/" ++ inDir ++ "; bsc -verilog -e " ++ topModule opts ++ name ++ " *.v" ++ cFiles ++ "\""
   when (genBsv opts) $ do
     runCmd "mkdir -p bsv"
     runCmd $ getBsv "."
