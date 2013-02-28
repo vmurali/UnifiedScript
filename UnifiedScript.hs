@@ -110,7 +110,7 @@ main = do
     runCmd "ln -sf -t bsv/single ${STRUCTURALSPEC_HOME}/lib/single/*.v"
   when (genMulti opts) $ do
     allFiles <- getDirectoryContents "bsv/single"
-    let files = [x|x <- allFiles, isJust $ matchRegex (mkRegex "^.*\\.v$") x, x /= "Base.v", x /= "Rand.v", x /= "RegFile.v"]
+    let files = [x|x <- allFiles, isJust $ matchRegex (mkRegex "^[a-z].*\\.v$") x]--, x /= "Base.v", x /= "Rand.v", x /= "RegFile.v"]
     runCmd "mkdir -p bsv/multi"
     foldl (\x file -> x >> (runCmd $ "Multicycle -o bsv/multi -m " ++ (intercalate ":" $ multiMods opts) ++ " bsv/single/" ++ file)) (return ()) files
     runCmd "ln -sf -t bsv/multi ${STRUCTURALSPEC_HOME}/lib/multi/*.v"
