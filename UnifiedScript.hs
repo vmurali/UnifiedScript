@@ -20,6 +20,7 @@ data Options = Options
   , topFile     :: String
   , topModule   :: String
   , hasC        :: Bool
+  , additional  :: [String]
   , force       :: Bool
   } deriving Show
 
@@ -35,6 +36,7 @@ defaultOptions = Options
   , topFile     = ""
   , topModule   = ""
   , hasC        = False
+  , additional  = []
   , force       = False
   }
 
@@ -49,7 +51,7 @@ options =
       (NoArg (\opts -> return opts {genBsv = True, genVerilog = True}))
       "Generate Verilog"
   , Option ['m'] ["multi"]
-      (OptArg (\mulMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = (multiMods opts) ++ splitColon (fromMaybe [] mulMods)}) "")
+      (ReqArg (\mulMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = (multiMods opts) ++ splitColon mulMods}) "")
       "Refined Partitions"
   , Option ['e'] ["exec"]
       (NoArg (\opts -> return opts {genBsv = True, genVerilog = True, genExec = True}))
@@ -58,7 +60,7 @@ options =
       (ReqArg (\refDir opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, genRefined = True, refinedDir = refDir}) "")
       "Refined Files Directory"
   , Option ['g'] ["refinedParts"]
-      (ReqArg (\refMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = nub (multiMods opts ++ splitColon refMods), genRefined = True, refinedMods = splitColon refMods}) "")
+      (ReqArg (\refMods opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, multiMods = nub (multiMods opts ++ splitColon refMods), genRefined = True, refinedMods = (refinedMods opts) ++ splitColon refMods}) "")
       "Refined Partitions"
   , Option ['t'] ["topmodule"]
       (ReqArg (\topmod opts -> return opts{topModule = topmod, multiMods = nub $ topmod:(multiMods opts)}) "")
@@ -66,6 +68,9 @@ options =
   , Option ['c'] ["c"]
       (NoArg (\opts -> return opts {hasC = True}))
       "Has C files"
+  , Option ['a'] ["additional"]
+      (ReqArg (\adds opts -> return opts{genBsv = True, genVerilog = True, genMulti = True, genRefined = True, additional = (additional opts) ++ splitColon adds}) "")
+      "Additional modules in refinement"
   , Option ['f'] ["force"]
       (NoArg (\opts -> return opts {force = True}))
       "Has refined modules"
@@ -121,6 +126,7 @@ main = do
     runCmd $ getBsv "buildRefined"
     runCmd $ getV "buildRefined" "multi"
     foldl (\x file -> x >> (runCmd $ "cp -f buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ "_FIFO_ALL_EXPOSED.v")) (return ()) (refinedMods opts)
+    foldl (\x file -> x >> (runCmd $ "cp -f buildRefined/bsv/multi/" ++ file ++ ".v bsv/multi/" ++ file ++ ".v")) (return ()) (additional opts)
   when (genExec opts) $ do
     runCmd $ getExec "single" ""
     when (genMulti opts) (runCmd $ getExec "multi" "_FIFO_OUTER_NOT_EXPOSED")
