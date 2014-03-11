@@ -1,6 +1,7 @@
 import System.Console.GetOpt
 import Text.Regex
-import System
+import System.Environment
+import System.Exit
 import System.IO
 import System.Directory
 import System.Cmd
